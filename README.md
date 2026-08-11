@@ -11,40 +11,52 @@ import into your own environment, plus the setup you need to make it run in **yo
 
 > ⚠️ **This export is sanitized.** All environment-specific values (tenant ID, app registration
 > client ID, Foundry endpoint) and the client **secret** have been removed and replaced with
-> placeholders. You must supply your own — see [Setup](#setup).
+> placeholders. You must supply your own — see [Setup](#setup-two-parts).
 
 ---
 
 ## What's in the box
 
+The solution contains everything below. For **just showing the agent working**, you only need the
+**core** pieces — the rest is included so you have a foundation to grow into, but you can safely
+ignore (or not wire up) the optional pieces for a quick demo. See
+[What you actually need for a demo](#what-you-actually-need-for-a-demo).
+
+### Core — needed to demo the agent + Foundry hand-off
+
 | Component | Type | Purpose |
 |-----------|------|---------|
 | **QA Copilot** | Copilot Studio agent (bot) | The orchestrator the user talks to |
 | 7 Skills | Inline agent skills | `requirements-analysis`, `scenario-design`, `test-case-design`, `suite-optimization`, `test-data-design`, `rca-method`, `quality-narration` |
-| **Azure DevOps MCP** | MCP tool | Reads/writes Azure DevOps work items & QA artifacts |
-| **GitHub MCP** | MCP tool | QA-relevant repo context (issues, PRs, diffs) |
-| **Calling Foundry Agent** | Cloud flow (Power Automate) | Sends a test case + target URL to the Foundry hosted agent (`test-executor`) via HTTP |
-| **ADO Return Sync** | Cloud flow | Syncs results back from Azure DevOps |
-| **Foundry back to Copilot Studio** | Cloud flow | Returns Foundry output to the agent |
-| 6 Dataverse tables | Tables | `mre_userstory`, `mre_testcase`, `mre_testdataset`, `mre_runrecord`, `mre_reqfinding`, `mre_defectrca` |
-| Canvas/code app | App | Supporting UI |
-| `crbcf_FoundryAgentClientSecret` | Environment variable | Holds the Foundry app client secret used by the flow |
+| **Calling Foundry Agent** | Workflow (Copilot Studio) | Sends a test case + target URL to the Foundry hosted agent (`test-executor`) via HTTP |
+| `crbcf_FoundryAgentClientSecret` | Environment variable | Holds the Foundry app client secret used by the workflow |
+
+### Optional — richer implementation (great for later; skippable for a hackathon)
+
+| Component | Type | Purpose | Why it's optional for a demo |
+|-----------|------|---------|------------------------------|
+| **Azure DevOps MCP** | MCP tool | Reads/writes Azure DevOps work items & QA artifacts | Recommended for the full workflow; a basic agent demo runs without it |
+| **GitHub MCP** | MCP tool | QA-relevant repo context (issues, PRs, diffs) | Only needed if you want GitHub grounding |
+| **ADO Return Sync** | Workflow | Syncs test results back from Azure DevOps | Part of the return path; not needed to *trigger* a run |
+| **Foundry back to Copilot Studio** | Workflow | Returns Foundry output to the agent | Return path; not needed to *trigger* a run |
+| 6 Dataverse tables | Tables | `mre_userstory`, `mre_testcase`, `mre_testdataset`, `mre_runrecord`, `mre_reqfinding`, `mre_defectrca` | Persistence/data model for a full solution; the agent conversation + hand-off works without storing to them |
+| Canvas / code app | App | Supporting UI | A front-end for the data model; not needed to demo the agent itself |
 
 ### How it fits together
 
 ```
 User ──▶ QA Copilot (Copilot Studio)
              │  skills: analyze / design / RCA / narrate
-             ├──▶ Azure DevOps MCP  (read/write work items)
-             ├──▶ GitHub MCP        (repo context)
-             └──▶ "Calling Foundry Agent" flow
+             ├──▶ Azure DevOps MCP  (read/write work items)   [optional]
+             ├──▶ GitHub MCP        (repo context)            [optional]
+             └──▶ "Calling Foundry Agent" workflow            [core]
                         │  HTTP POST { input: <test case + URL> }
                         ▼
                   Azure AI Foundry hosted agent (test-executor / "QAFoundry")
                         │  generates Playwright test, commits to Azure DevOps,
                         │  triggers BDD-Test-Execution pipeline
                         ▼
-                  Results ──▶ ADO ──▶ "ADO Return Sync" / "Foundry back to Copilot Studio"
+                  Results ──▶ ADO ──▶ "ADO Return Sync" / "Foundry back to Copilot Studio"  [optional]
 ```
 
 The Foundry hosted agent itself (its Python source, tools, and pipeline) is **not** part of this
@@ -53,88 +65,65 @@ Power Platform orchestration layer** that calls it.
 
 ---
 
-## Prerequisites
+## What you actually need for a demo
 
-You need access to all of the following in **your** tenant:
+The solution zip imports as a single unit (all components come in together — that's fine and does no
+harm). The point is what you have to **configure and use**:
 
-1. **Power Platform environment** with **Dataverse** enabled, and the **Power Platform / Copilot
-   Studio** licenses/permissions to import solutions and create agents.
-2. **Microsoft Copilot Studio** enabled in that environment.
-3. **Azure AI Foundry** project with a **deployed hosted agent** that exposes the OpenAI-compatible
-   `responses` endpoint (this solution was built against an agent named `test-executor`). See
-   [Foundry agent requirements](#the-foundry-hosted-agent).
-4. **Microsoft Entra app registration** (service principal) that the flow uses to authenticate to
-   Foundry, **plus a client secret**.
-5. **Azure DevOps** organization/project (used by the Foundry agent to commit tests and run the
-   pipeline) — only required if you use the execution hand-off and return-sync flows.
-6. A **GitHub** account/app if you want the GitHub MCP tool.
-7. Permissions to **create role assignments** on the Foundry resource (to grant the app access).
+- **To show the agent + test-execution hand-off:** the QA Copilot agent, its skills, the
+  **Calling Foundry Agent** workflow, and the secret environment variable. That's it.
+- **The Dataverse tables and the canvas/code app** are there for a fuller, data-backed
+  implementation. Wiring them up end-to-end is a **future exercise** — for a hackathon with limited
+  time, you can leave them unused. They don't need any configuration to demo the agent.
+- **The return-path workflows and GitHub MCP** are also optional for a first demo; add them when you
+  want the full round-trip.
+
+> TL;DR — for a fast hackathon demo, focus on **agent + Calling Foundry Agent workflow + secret**.
+> Everything else can wait.
 
 ---
 
-## Setup
+## Prerequisites
 
-Follow these in order. Full detail is in [`docs/SETUP.md`](docs/SETUP.md); this is the summary.
+You need access to the following in **your** tenant. The Azure/Foundry items are the heavier,
+one-time groundwork; the Power Platform items are quick.
 
-### 1. Create the Entra app registration + secret
+**Azure / Foundry (one-time platform groundwork — [Part A](docs/SETUP-FOUNDRY.md))**
+1. **Azure AI Foundry** project with a **deployed hosted agent** that exposes the OpenAI-compatible
+   `responses` endpoint (reference solution used an agent named `test-executor`).
+2. **Microsoft Entra app registration** (service principal) + a **client secret**, for the workflow
+   to authenticate to Foundry.
+3. Permission to **assign roles** (Owner / User Access Administrator) on the Foundry resource, to
+   grant the app **Azure AI User**.
+4. Foundry endpoint **reachable from Power Platform** (public network access / IP exception).
 
-The "Calling Foundry Agent" flow authenticates to Foundry with **client credentials**
-(`ActiveDirectoryOAuth`).
+**Power Platform / Copilot Studio (the quick part — [Part B](docs/SETUP-POWER-PLATFORM.md))**
+5. A **Power Platform environment** with **Dataverse**, and **Copilot Studio** enabled.
+6. **Environment Maker + System Customizer** (or admin) to import the solution, and rights to
+   **create connections**.
+7. **Premium** Power Platform licensing (the workflow uses the **HTTP** action + premium connectors).
+8. **DLP policy that allows** the connectors used — most importantly the generic **HTTP** connector,
+   in the **same group** as Dataverse / Azure DevOps / GitHub / Agent connectors. This is the #1
+   thing admins need to unblock. Details in
+   [Part B → DLP requirements](docs/SETUP-POWER-PLATFORM.md#dlp-requirements).
 
-1. In **Entra ID → App registrations → New registration**, create an app (single tenant is fine).
-2. Under **Certificates & secrets**, create a **client secret** and copy the **value** (not the ID).
-3. Note the **Application (client) ID** and your **Directory (tenant) ID**.
+**Optional (only if you use those components)**
+9. **Azure DevOps** org/project (execution + return-sync) and a **GitHub** account/app (GitHub MCP).
 
-### 2. Grant the app access to your Foundry agent
+---
 
-The app's service principal needs **data-plane** access to invoke the agent.
+## Setup (two parts)
 
-- Assign the **Azure AI User** (a.k.a. **Foundry User**) role to the app's service principal, scoped
-  to your Azure AI Foundry (Cognitive Services) account.
-- RBAC can take a few minutes to propagate.
+Setup is split so you can see how small the Copilot Studio side is once the platform groundwork is
+done:
 
-### 3. Import the solution
+- **[Part A — Azure AI Foundry](docs/SETUP-FOUNDRY.md)** — the one-time platform groundwork (app
+  registration, secret, RBAC, confirm the agent endpoint, network). The more involved half.
+- **[Part B — Power Platform / Copilot Studio](docs/SETUP-POWER-PLATFORM.md)** — the quick half:
+  import the solution, set one secret, fill in three values, connect tools, publish. ~15 minutes, no
+  code.
 
-1. Go to **[make.powerapps.com](https://make.powerapps.com)** → select your environment →
-   **Solutions → Import solution**.
-2. Upload [`solution/QACopilot_1_0_0_3.zip`](solution/QACopilot_1_0_0_3.zip).
-3. When prompted, either **create new connections** or map **connection references** for:
-   - Microsoft Dataverse
-   - Azure DevOps MCP (`shared_adomcpserver`)
-   - GitHub (`shared_github`)
-   - Agent / Copilot connectors
-4. When prompted for the **environment variable** `Foundry Agent Client Secret`
-   (`crbcf_FoundryAgentClientSecret`), paste the **client secret value** from step 1.
-   - If not prompted, set it after import under **Solutions → QA Copilot → Environment variables**.
-
-### 4. Point the flow at *your* Foundry agent
-
-The exported flow contains **placeholders** you must replace. Open the **Calling Foundry Agent**
-flow → **HTTP** action and set:
-
-| Field | Replace placeholder with |
-|-------|--------------------------|
-| **URI** | `https://<YOUR_FOUNDRY_RESOURCE>.services.ai.azure.com/api/projects/<YOUR_PROJECT>/agents/<YOUR_AGENT_NAME>/endpoint/protocols/openai/responses?api-version=2025-11-15-preview` |
-| **Authentication → Tenant** | `<YOUR_AZURE_TENANT_ID>` |
-| **Authentication → Client ID** | `<YOUR_APP_CLIENT_ID>` |
-| **Authentication → Audience** | `https://ai.azure.com` (already set) |
-| **Authentication → Secret** | leave as `@parameters('crbcf_FoundryAgentClientSecret')` |
-
-> Keep the **secret** field bound to the environment variable — do **not** paste the raw secret into
-> the flow. See [Credentials & the secret](#credentials--the-secret).
-
-### 5. Configure the MCP tool connections
-
-In Copilot Studio, open the **QA Copilot** agent → **Tools** and finish authenticating:
-- **Azure DevOps MCP** – connect with an account that can read your ADO project.
-- **GitHub MCP** – connect your GitHub account/app.
-
-### 6. Publish & test
-
-1. **Publish** the QA Copilot agent in Copilot Studio.
-2. Ensure all three flows are **turned on**.
-3. In the agent's **Test** pane, ask it to analyze a work item and hand off a test case for
-   execution. The agent calls the flow, which calls the Foundry agent.
+> Do Part A first (or confirm it already exists), then Part B.
 
 ---
 
@@ -143,36 +132,19 @@ In Copilot Studio, open the **QA Copilot** agent → **Tools** and finish authen
 **No secret value is included in this repository.** The solution ships the environment-variable
 *definition* `crbcf_FoundryAgentClientSecret` but **not** its value.
 
-- The flow references the secret as `@parameters('crbcf_FoundryAgentClientSecret')`. Because the flow
-  **and** the environment variable are in the **same solution**, this binding is preserved across
-  designer saves — so you set the secret **once** (in the environment variable) and never paste it
-  into the flow.
+- The workflow references the secret as `@parameters('crbcf_FoundryAgentClientSecret')`. Because the
+  workflow **and** the environment variable are in the **same solution**, this binding is preserved
+  across designer saves — so you set the secret **once** (in the environment variable) and never
+  paste it into the workflow.
 - **To rotate** the secret: update the environment variable value under
-  **Solutions → QA Copilot → Environment variables**. No flow edit required.
+  **Solutions → QA Copilot → Environment variables**. No workflow edit required.
 - **Do not** put the raw secret directly in the HTTP action's `secret` field — Copilot Studio masks
   that field on save (writes `******`), which breaks authentication with
   `AADSTS7000215: Invalid client secret provided`.
 
 > For higher security you can back the environment variable with **Azure Key Vault** (a *secret*
-> environment variable) instead of storing the value in Dataverse. This requires the Key Vault to
-> allow Power Platform network access and the Power Platform service principal to have
-> **Key Vault Secrets User** on the secret. See `docs/SETUP.md`.
-
----
-
-## The Foundry hosted agent
-
-This solution **calls** a Foundry hosted agent; it does not deploy one. Your agent must:
-
-- Be a **hosted** Foundry agent exposing the **Responses** protocol at
-  `…/agents/<name>/endpoint/protocols/openai/responses`.
-- Accept a body of `{ "input": "<text>" }`.
-- (For the execution use-case) be able to commit to Azure DevOps and trigger a pipeline — i.e. have
-  the equivalent of the `test-executor` agent's tools and an `AZURE_DEVOPS_PAT`.
-
-The flow wraps whatever the agent passes (`text` = test case, `text_1` = target URL) with an
-instruction telling the Foundry agent to **convert the test case into an executable Playwright test,
-commit it, and trigger the pipeline** — so plain tabular/markdown test cases work, not just Gherkin.
+> environment variable) instead of storing the value in Dataverse. See
+> [Part B → Optional: Key Vault](docs/SETUP-POWER-PLATFORM.md#optional-back-the-secret-with-azure-key-vault).
 
 ---
 
@@ -180,11 +152,12 @@ commit it, and trigger the pipeline** — so plain tabular/markdown test cases w
 
 ```
 qa-copilot-solution/
-├── README.md                       # this file
+├── README.md                         # this file
 ├── solution/
-│   └── QACopilot_1_0_0_3.zip       # sanitized, unmanaged Power Platform solution
+│   └── QACopilot_1_0_0_3.zip         # sanitized, unmanaged Power Platform solution
 └── docs/
-    └── SETUP.md                    # detailed, step-by-step setup guide
+    ├── SETUP-FOUNDRY.md              # Part A — Azure AI Foundry (platform groundwork)
+    └── SETUP-POWER-PLATFORM.md       # Part B — Power Platform / Copilot Studio (the quick part)
 ```
 
 ## Notes & limitations
@@ -195,4 +168,4 @@ qa-copilot-solution/
 - The agent instructions reference QA workflows and a hand-off agent named "QAFoundry"; adjust the
   agent instructions to your terminology if desired.
 - Environment-specific IDs were removed for public sharing; the solution will import but **will not
-  call Foundry until you complete step 4**.
+  call Foundry until you complete [Part B → B3](docs/SETUP-POWER-PLATFORM.md#b3-fill-in-your-foundry-details-in-the-workflow)**.
