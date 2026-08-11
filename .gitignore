@@ -1,0 +1,23 @@
+# Secrets & local config — never commit
+*.secret
+*.env
+.env
+.env.*
+appsettings.local.json
+secrets.json
+
+# Unpacked/extracted solution working folders
+qacopilot-extract/
+**/extract/
+*.unpacked/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs & temp
+*.log
+tmp/
+temp/
