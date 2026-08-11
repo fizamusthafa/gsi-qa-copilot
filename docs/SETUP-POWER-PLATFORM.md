@@ -1,21 +1,28 @@
-# Setup — Part B: Power Platform / Copilot Studio (the quick part)
+# Setup — Power Platform / Copilot Studio (do this now — no Foundry needed)
 
-Once [Part A (Azure AI Foundry)](SETUP-FOUNDRY.md) is done, this side is fast: **import one
-solution, set one secret, fill in three values, connect two tools, publish.** No code, roughly
-**15 minutes**.
+**You can set up and test the whole Copilot Studio experience today without Azure AI Foundry
+access.** The agent, its skills, and the two **Azure DevOps–driven** workflows all run without
+Foundry. Only one workflow (**Calling Foundry Agent**) needs Foundry, and it's cleanly separated into
+a [later section](#when-you-get-foundry-access-enable-the-calling-foundry-agent-workflow).
 
-> Have these from Part A ready: `TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET` (value), and your Foundry
-> Responses URL.
+No code, roughly **15 minutes**.
 
-**At a glance**
+**What works now vs later**
 
-| Step | What | ~Time |
-|------|------|-------|
-| B1 | Import the solution | 3–5 min |
-| B2 | Set the secret environment variable | 1 min |
-| B3 | Fill in 3 values in the workflow | 2 min |
-| B4 | Connect Azure DevOps MCP + GitHub | 3 min |
-| B5 | Publish & test | 3 min |
+| Component | Works now (no Foundry)? |
+|-----------|:-----------------------:|
+| QA Copilot agent + 7 skills | ✅ |
+| **Azure DevOps MCP** tool | ✅ |
+| GitHub MCP tool | ✅ (optional) |
+| **Foundry back to Copilot Studio** workflow (build completes → calls the agent) | ✅ |
+| **ADO Return Sync** workflow (work item updated → Dataverse) | ✅ |
+| Dataverse tables + canvas/code app | ✅ (imported; optional to use) |
+| **Calling Foundry Agent** workflow (agent → Foundry over HTTP) | ⛔ needs Foundry — [wire later](#when-you-get-foundry-access-enable-the-calling-foundry-agent-workflow) |
+
+> Despite its name, **Foundry back to Copilot Studio** does not call Foundry. It's triggered by an
+> **Azure DevOps build completing** and calls back into the Copilot Studio **Agent**. In the full
+> loop that build is what Foundry's pipeline kicks off, but you can test this workflow now with any
+> Azure DevOps build.
 
 ---
 
@@ -25,46 +32,50 @@ solution, set one secret, fill in three values, connect two tools, publish.** No
   Platform environment — required to import a solution.
 - A **Copilot Studio** license, and Copilot Studio enabled on the environment.
 - Rights to **create connections** for the connectors below (some tenants restrict this).
-- **Premium** Power Platform licensing (the workflow uses the **HTTP** action and premium
-  connectors).
-- Your tenant's **DLP policy must allow** the connectors this solution uses — see
-  [DLP requirements](#dlp-requirements) before importing, or the workflows will be blocked.
+- **Premium** Power Platform licensing (premium connectors are used).
+- An **Azure DevOps** organization/project you can connect to (the two workflows and the Azure DevOps
+  MCP tool use it).
+- Your tenant's **DLP policy must allow** the connectors used — see
+  [DLP requirements](#dlp-requirements) before importing.
+
+> You do **not** need Azure AI Foundry, an Entra app registration, or the client secret for anything
+> in this guide except the optional [Foundry workflow section](#when-you-get-foundry-access-enable-the-calling-foundry-agent-workflow).
 
 ---
 
 ## DLP requirements
 
-> Read this **before** importing. Data Loss Prevention (DLP) policies are the most common reason the
-> "Calling Foundry Agent" workflow fails to run even when everything else is correct.
+> Read this **before** importing. Data Loss Prevention (DLP) policies are the most common reason a
+> workflow fails to run even when everything else is correct.
 
 Power Platform DLP sorts every connector into **Business**, **Non-Business**, or **Blocked**. Two
-rules matter here:
+rules matter:
 
-1. A single workflow **cannot combine connectors from different groups** (e.g., one Business + one
-   Non-Business). All connectors a workflow uses must be in the **same** group.
+1. A single workflow **cannot combine connectors from different groups**. All connectors a workflow
+   uses must be in the **same** group.
 2. A **Blocked** connector cannot be used at all.
 
-Make sure your tenant/environment DLP policy places **all** of these in the **same, non-blocked**
+**For the part you're doing now (no Foundry),** make sure these are in the **same, non-blocked**
 group:
 
-| Connector | Used by | Notes |
-|-----------|---------|-------|
-| **HTTP** | Calling Foundry Agent workflow | ⚠️ **Most common blocker.** The generic **HTTP** connector is blocked by default in many tenants. It must be **allowed** and in the same group as the others. |
-| **Microsoft Dataverse** (`shared_commondataserviceforapps`) | All workflows / tables | |
-| **Azure DevOps** (`shared_visualstudioteamservices`) | ADO Return Sync, build triggers | |
-| **Azure DevOps MCP** (`shared_adomcpserver`) | Agent tool | |
-| **GitHub** (`shared_github`) | Agent tool | |
-| **Agent / Copilot** connectors (`shared_agentnode`) | Agent ↔ workflow calls | |
+| Connector | Used by |
+|-----------|---------|
+| **Microsoft Dataverse** (`shared_commondataserviceforapps`) | ADO Return Sync, tables |
+| **Azure DevOps** (`shared_visualstudioteamservices`) | ADO Return Sync, Foundry-back workflow |
+| **Azure DevOps MCP** (`shared_adomcpserver`) | Agent tool |
+| **GitHub** (`shared_github`) | Agent tool (optional) |
+| **Agent / Copilot** (`shared_agentnode`) | Foundry-back workflow, agent ↔ workflow calls |
+
+**Only when you add Foundry later** you additionally need:
+
+| Connector | Used by |
+|-----------|---------|
+| **HTTP** | Calling Foundry Agent workflow (⚠️ often blocked by default; allow it and place it in the same group) |
 
 Also confirm with your Power Platform admin that:
 - **Copilot Studio** and **generative AI** features are enabled for the environment.
 - Adding **MCP tools / custom connectors** to agents is permitted.
-- **Connector action-level** DLP rules don't specifically block the HTTP action or these connectors.
-- Any **tenant isolation** policy allows the cross-service calls (to `*.services.ai.azure.com`).
-
-> If DLP can't be changed to allow the generic HTTP connector, an alternative is to front the Foundry
-> call with a custom connector that's approved in your tenant — but the simplest path is to allow
-> HTTP in the same DLP group as Dataverse.
+- Any **tenant isolation** policy allows the connections you create.
 
 ---
 
@@ -76,54 +87,88 @@ Also confirm with your Power Platform admin that:
    [`solution/QACopilot_1_0_0_3.zip`](../solution/QACopilot_1_0_0_3.zip) → **Next**.
 3. **Connections / connection references** — the wizard lists the connectors used:
    - **Microsoft Dataverse**
+   - **Azure DevOps** (`shared_visualstudioteamservices`)
    - **Azure DevOps MCP** (`shared_adomcpserver`)
    - **GitHub** (`shared_github`)
-   - **Agent / Copilot** connectors
+   - **Agent / Copilot** (`shared_agentnode`)
    For each, pick an existing connection or click **+ New connection**, authenticate, then return and
    **Refresh**.
-4. **Environment variable** — when prompted for **Foundry Agent Client Secret**
-   (`crbcf_FoundryAgentClientSecret`), paste your `CLIENT_SECRET` value from Part A.
+4. **Environment variable** — if prompted for **Foundry Agent Client Secret**
+   (`crbcf_FoundryAgentClientSecret`), you can **leave it blank for now** (it's only used by the
+   Foundry workflow). Set it later when you do the [Foundry section](#when-you-get-foundry-access-enable-the-calling-foundry-agent-workflow).
 5. Click **Import** and wait for it to finish.
 
-> If the import doesn't prompt for the environment variable, set it in B2.
+> The whole solution imports as one unit (tables, app, all three workflows). That's fine — unused
+> components just sit there and need no configuration. See the README's *"What you actually need for
+> a demo."*
 
 ---
 
-## B2. Set the secret environment variable
+## B2. Connect the Azure DevOps workflows
 
-**Solutions → QA Copilot → Environment variables → Foundry Agent Client Secret → set Current
-Value** = your `CLIENT_SECRET`.
+Both of these work **without Foundry**:
 
-Why it's stored here (and not in the workflow):
-- The workflow references the secret as `@parameters('crbcf_FoundryAgentClientSecret')`. Because the
-  workflow **and** the environment variable are in the **same solution**, this binding survives
-  designer saves. You set the secret **once** and never paste it into the workflow.
-- **To rotate**: just update this value. No workflow edit needed.
-- **Never** type the raw secret into the HTTP action's `secret` field — Copilot Studio masks it to
-  `******` on save, which breaks auth with `AADSTS7000215: Invalid client secret provided`.
+1. **Solutions → QA Copilot → Workflows.**
+2. **ADO Return Sync** — open it, make sure its **Azure DevOps** and **Dataverse** connections are
+   authorized, point the **"When a work item is updated"** trigger at your ADO organization/project,
+   and **turn it on**.
+3. **Foundry back to Copilot Studio** — open it, authorize its **Azure DevOps** and **Agent**
+   connections, point the **"When a build completes"** trigger at your ADO
+   organization/project/pipeline, and **turn it on**. This is the workflow that reports a completed
+   build back into the QA Copilot agent.
 
 ---
 
-## B3. Fill in your Foundry details in the workflow
+## B3. Connect the MCP tools
 
-The workflow ships with **placeholders** (identifiers were removed for public sharing). Replace them:
+**Copilot Studio → QA Copilot → Tools:**
+- **Azure DevOps MCP** — connect an account with access to your ADO project.
+- **GitHub MCP** — connect your GitHub account/app (optional).
 
-1. **Solutions → QA Copilot → Workflows → Calling Foundry Agent → Edit.**
-2. Open the **HTTP** action and set:
+---
+
+## B4. Publish and test (no Foundry required)
+
+1. **Copilot Studio → QA Copilot → Publish.**
+2. In the **Test** pane, exercise the agent's QA skills (requirements analysis, scenario/test-case
+   design, RCA, quality narration) grounded in your Azure DevOps work items via the Azure DevOps MCP.
+3. Test the **Foundry back to Copilot Studio** use case: complete a build in your Azure DevOps
+   pipeline and confirm the workflow fires and the agent is invoked
+   (**Power Automate → Foundry back to Copilot Studio → Run history**).
+4. Test **ADO Return Sync**: update a work item and confirm the workflow runs and reads/writes
+   Dataverse as expected.
+
+That's the Copilot Studio experience validated end-to-end — no Foundry needed.
+
+---
+
+## When you get Foundry access: enable the "Calling Foundry Agent" workflow
+
+Do this **only after** completing the separate **[Azure AI Foundry track](SETUP-FOUNDRY.md)** (app
+registration, client secret, RBAC, and the Responses URL). It's fully independent of everything
+above.
+
+1. **Set the secret** — **Solutions → QA Copilot → Environment variables → Foundry Agent Client
+   Secret** → set **Current Value** = your `CLIENT_SECRET`.
+   - Keep the secret here, not in the workflow. The workflow references it as
+     `@parameters('crbcf_FoundryAgentClientSecret')`; because the env var and workflow are in the
+     same solution, this binding survives designer saves. Rotate by updating this value only.
+   - **Never** type the raw secret into the HTTP action's `secret` field — Copilot Studio masks it to
+     `******` on save, breaking auth with `AADSTS7000215: Invalid client secret provided`.
+2. **Fill in your Foundry details** — **Workflows → Calling Foundry Agent → Edit → HTTP** action:
 
    | Field | Value |
    |-------|-------|
-   | **URI** | your full Foundry Responses URL from Part A |
+   | **URI** | your Foundry Responses URL |
    | **Authentication → Tenant** | `<TENANT_ID>` |
    | **Authentication → Client ID** | `<CLIENT_ID>` |
    | **Authentication → Audience** | `https://ai.azure.com` (already set) |
    | **Authentication → Secret** | keep `@parameters('crbcf_FoundryAgentClientSecret')` |
 
-3. **Save**, then confirm the workflow is **turned on**.
+3. Ensure the **HTTP** connector is allowed by DLP (see [DLP requirements](#dlp-requirements)).
+4. **Save** and **turn on** the workflow.
 
 ### About the request body (already configured — no change needed)
-The HTTP body is an expression that builds valid JSON and wraps the inputs with an instruction:
-
 ```
 @setProperty(json('{}'), 'input',
   concat('You are given a test case ... convert ... commit ... trigger the pipeline.',
@@ -133,32 +178,10 @@ The HTTP body is an expression that builds valid JSON and wraps the inputs with 
          'Test case:', decodeUriComponent('%0A%0A'),
          triggerOutputs()?['body/text']))
 ```
-
-- `text` (label **Test cases**) and `text_1` (label **web link**) are the trigger inputs the agent
-  passes in.
-- Using `setProperty(json('{}'), …)` (not hand-typed `{ "input": "..." }`) guarantees newlines and
-  quotes in the test case are correctly JSON-escaped. Hand-typed JSON fails with
-  `invalid_payload: '0x0A' is invalid within a JSON string` when the test case contains line breaks.
-
----
-
-## B4. Connect the MCP tools & other workflows
-
-1. **Copilot Studio → QA Copilot → Tools:**
-   - **Azure DevOps MCP** — connect an account with access to your ADO project.
-   - **GitHub MCP** — connect your GitHub account/app.
-2. **Workflows** — make sure **ADO Return Sync** and **Foundry back to Copilot Studio** are
-   **turned on** and their connections are authorized (Azure DevOps / Dataverse).
-
----
-
-## B5. Publish and validate
-
-1. **Copilot Studio → QA Copilot → Publish.**
-2. In the **Test** pane, drive a QA workflow that ends in a test-execution hand-off. The agent calls
-   the workflow → the workflow calls Foundry → the Foundry agent generates/commits/queues the test.
-3. Validate the run in **Power Automate → Calling Foundry Agent → Run history** (HTTP action should
-   be **Succeeded / 200**) and in **Azure DevOps** (new branch + pipeline run).
+- `text` (**Test cases**) and `text_1` (**web link**) are the trigger inputs the agent passes in.
+- `setProperty(json('{}'), …)` (not hand-typed `{ "input": "..." }`) guarantees newlines/quotes are
+  JSON-escaped. Hand-typed JSON fails with `invalid_payload: '0x0A' is invalid within a JSON string`
+  when the test case has line breaks.
 
 ---
 
@@ -180,13 +203,12 @@ For a *secret* environment variable backed by Key Vault instead of a plain-text 
 
 | Symptom | Cause | Fix |
 |---------|-------|-----|
-| Workflow won't save / "connector not allowed" / flow suspended | **DLP** blocks a connector or mixes groups | Put HTTP + Dataverse + ADO + GitHub + Agent connectors in the same, non-blocked DLP group (see [DLP requirements](#dlp-requirements)) |
-| `AADSTS7000215: Invalid client secret provided` | Secret field was overwritten with `******` on a designer save, or the secret **ID** was used instead of the **value** | Reset the environment variable value; keep the workflow's Secret bound to `@parameters('crbcf_FoundryAgentClientSecret')` |
-| `The workflow parameter 'crbcf_FoundryAgentClientSecret' is not found` | The workflow's `parameters` binding was stripped, or the env var isn't in the same solution | Ensure the env var **and** the workflow are in the QA Copilot solution; re-open/save the workflow so the binding is restored |
-| HTTP **403** `agents/write` denied | App lacks data-plane role on Foundry, or RBAC hasn't propagated | Assign **Azure AI User** to the app on the Foundry account (Part A); wait 5–10 min |
-| `invalid_payload: '0x0A' is invalid within a JSON string` | Test case newlines injected into hand-typed JSON | Use the `setProperty(json('{}'), 'input', …)` body expression (already in this solution) |
-| Agent replies "no BDD scenarios / nothing to run" | The agent received empty or non-actionable input | Confirm the trigger inputs are populated (the agent must pass `text`/`text_1`); the workflow's instruction wrapper handles tabular/markdown test cases |
-| Workflow can't be tested standalone from an API call | The "When an agent calls the workflow" trigger only receives inputs when invoked **by the agent** | Test end-to-end from the QA Copilot agent, not by calling the workflow's run endpoint directly |
+| Workflow won't save / "connector not allowed" / flow suspended | **DLP** blocks a connector or mixes groups | Put the connectors this workflow uses in the same, non-blocked DLP group (see [DLP requirements](#dlp-requirements)) |
+| Foundry-back / ADO Return Sync workflow doesn't trigger | Trigger not pointed at your ADO org/project, or connection unauthorized | Re-open the workflow, fix the Azure DevOps trigger target, authorize the connection, turn it on |
+| `AADSTS7000215: Invalid client secret provided` *(Foundry workflow only)* | Secret overwritten with `******` on a designer save, or the secret **ID** used instead of the **value** | Reset the environment variable value; keep the Secret bound to `@parameters('crbcf_FoundryAgentClientSecret')` |
+| `The workflow parameter 'crbcf_FoundryAgentClientSecret' is not found` *(Foundry workflow only)* | The `parameters` binding was stripped, or the env var isn't in the same solution | Ensure the env var **and** the workflow are in the QA Copilot solution; re-open/save the workflow |
+| HTTP **403** `agents/write` denied *(Foundry workflow only)* | App lacks data-plane role on Foundry, or RBAC hasn't propagated | Assign **Azure AI User** to the app on the Foundry account (see [Foundry track](SETUP-FOUNDRY.md)); wait 5–10 min |
+| `invalid_payload: '0x0A' is invalid within a JSON string` *(Foundry workflow only)* | Test case newlines injected into hand-typed JSON | Use the `setProperty(json('{}'), 'input', …)` body expression (already in this solution) |
 
 ---
 

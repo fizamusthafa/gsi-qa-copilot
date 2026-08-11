@@ -1,13 +1,22 @@
-# Setup — Part A: Azure AI Foundry (platform groundwork)
+# Setup — Azure AI Foundry track (separate; only for the one Foundry workflow)
 
-This is the **one-time platform setup** on the Azure side. It's the more involved half, because it
-touches Azure AI Foundry, Entra app registrations, and Azure RBAC. Once this is done, the
-[Power Platform / Copilot Studio side](SETUP-POWER-PLATFORM.md) is quick.
+> 🟢 **You do NOT need any of this to test the Copilot Studio part.**
+> The Copilot Studio agent, its skills, and the two **Azure DevOps–driven** workflows
+> (**ADO Return Sync** and **Foundry back to Copilot Studio**) all work **without** Azure AI Foundry.
+> See **[Power Platform / Copilot Studio setup](SETUP-POWER-PLATFORM.md)** — that's the part to do now.
+>
+> This Foundry track only enables the single **Calling Foundry Agent** workflow, which sends a test
+> case to a Foundry hosted agent for execution. Come back to this **when you have Foundry access**;
+> it's an independent track you can sort out separately.
 
-> You only do this once per environment. If your Foundry agent and app registration already exist,
-> you can skip straight to [Part B](SETUP-POWER-PLATFORM.md).
+This is a **one-time platform setup** on the Azure side — Azure AI Foundry, an Entra app
+registration, and Azure RBAC. It's fully decoupled from the Copilot Studio setup.
 
-**What you produce here (carry these into Part B):**
+> If your Foundry agent and app registration already exist, you just need `TENANT_ID`, `CLIENT_ID`,
+> `CLIENT_SECRET`, and the Responses URL, then wire the one workflow per
+> [Power Platform → "When you get Foundry access"](SETUP-POWER-PLATFORM.md#when-you-get-foundry-access-enable-the-calling-foundry-agent-workflow).
+
+**What you produce here (needed only for the Calling Foundry Agent workflow):**
 
 | Value | Example |
 |-------|---------|
@@ -43,7 +52,7 @@ The **Calling Foundry Agent** workflow authenticates to Foundry using **client c
    - ⚠️ Use the secret **value**, not the secret **ID**. Using the ID causes
      `AADSTS7000215: Invalid client secret provided`.
 
-Keep `TENANT_ID`, `CLIENT_ID`, and `CLIENT_SECRET` (value) for Part B.
+Keep `TENANT_ID`, `CLIENT_ID`, and `CLIENT_SECRET` (value) to wire the workflow later.
 
 ---
 
@@ -103,7 +112,7 @@ curl -X POST \
   -d '{ "input": "Say OK" }'
 ```
 A `status: completed` response with an assistant message confirms the endpoint. Record the full URL
-for Part B.
+to wire the workflow later.
 
 ---
 
@@ -115,11 +124,12 @@ Power Platform calls the Foundry endpoint over the public internet from Microsof
 - If your Foundry account has **public network access disabled** or is locked to a private
   endpoint / IP allow-list, the workflow's HTTP call will fail. Either allow public access or add the
   appropriate exception so Power Platform outbound traffic can reach it.
-- The same applies to Azure DevOps if you use the execution hand-off / return-sync workflows.
 
 ---
 
 ## Next
 
-Platform groundwork done. Continue to **[Part B: Power Platform / Copilot Studio](SETUP-POWER-PLATFORM.md)** —
-the quick part.
+Once you have `TENANT_ID`, `CLIENT_ID`, `CLIENT_SECRET`, and the Responses URL, enable the single
+Foundry workflow by following
+**[Power Platform → "When you get Foundry access"](SETUP-POWER-PLATFORM.md#when-you-get-foundry-access-enable-the-calling-foundry-agent-workflow)**.
+Everything else in Copilot Studio works without this track.
